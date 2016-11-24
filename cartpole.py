@@ -8,10 +8,10 @@ from pprint import pprint
 env = gym.make('CartPole-v0')
 env.reset()
 
-training_batch_size = 100
-num_batches = 100
-e = 0.5# epsilon greedy action selection probability
-e_discount = 0.99
+training_batch_size = 5
+num_batches = 1000
+e = 0.3# epsilon greedy action selection probability
+e_discount = 1#0.99
 discount = 1 #discount factor while calculating returns
 display = False # whether to render graphic
 #state is defined by cart position, cart velocity, pole angle, pole tip velocity
@@ -83,11 +83,15 @@ for batch_num in range(num_batches):
 	e *= e_discount
 	max_steps = 0
 	avg_steps = 0.0
+	batch_ret_vectors = []
+	batch_states = []
 	for train_iter in range(training_batch_size):
 		state = env.reset()
 		rewards = []
+		returns = []
 		states = []
 		action_vectors = []
+		ret_vectors = []
 
 		#an episode is one complete run of cart-pole 
 		#epoch = each step in an episode where we take one action
@@ -109,6 +113,7 @@ for batch_num in range(num_batches):
 			state, reward, done, info = env.step(action)
 			rewards.append(reward)
 			step += 1
+		batch_states.append(states)
 
 		#compute and print some metrics
 		avg_steps = (avg_steps*train_iter + step)/(train_iter+1)
@@ -124,15 +129,15 @@ for batch_num in range(num_batches):
 			for j in xrange(future_steps):
 				ret += rewards[i+j]*decrease
 				decrease *= discount
+				ret_vector = np.dot(ret, action_vectors[i])
+				ret_vectors.append(ret_vector)
+		batch_ret_vectors.append(ret_vectors)
 
-			#backprop this discounted return
-			backprop(states[i],np.dot(ret, action_vectors[i]))
-			#print(ret)
-			"""
-			backprop currently done epoch by epoch
-			hacky, and not optimized for speed
-			okay for now since cpu is being used
-			"""
+	#backprop discounted return
+	for i in range(training_batch_size):
+		for j in range(len(batch_states[i])):
+			backprop(batch_states[i][j],batch_ret_vectors[i][j])
+
 	print('Batch: '+str(batch_num)+' Max: '+str(max_steps)+ ' Avg: '+str(avg_steps)+' Epsilon: '+str(e))
 
 # test learnt policy, e-greedy is off
