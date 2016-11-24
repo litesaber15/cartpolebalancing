@@ -3,7 +3,7 @@ import theano
 import theano.tensor as T
 import theano.tensor.nnet as nnet
 import numpy as np
-def adam(loss, all_params, learning_rate=0.001, b1=0.9, b2=0.999, e=1e-8,
+def Adam(loss, all_params, learning_rate=0.001, b1=0.9, b2=0.999, e=1e-8,
          gamma=1-1e-8):
     """
     ADAM update rules

@@ -3,25 +3,29 @@ import theano
 import theano.tensor as T
 import theano.tensor.nnet as nnet
 import numpy as np
-from adam import adam
-
+from adam import Adam
+from pprint import pprint
 env = gym.make('CartPole-v0')
 env.reset()
-training_steps = 4000
-e = 0.3 # epsilon greedy action selection probability
+training_steps = 3000
+
+e = 0.35# epsilon greedy action selection probability
 discount = 0.97 #discount factor while calculating returns
-alpha = 0.3 #learning rate for grad descent in backprop
 display = False # whether to render graphic
 #state is defined by cart position, cart velocity, pole angle, pole tip velocity
 dim_state = 4 #dimension of state vector
 # there are two possible actions: move cart left(0) or move cart right (1)
 dim_action = 2 #dimension of action vector
 wid_hidden = 3 	#no. of nodes in hidden layer
+L1_reg = 0.3
+L2_reg = 0.3
 
 state = T.dvector()
 action_probabilities = T.dvector() # predicted value
 target_actions = T.dvector()
 ret = T.dscalar()
+ret_vector = T.dvector()
+action_vector = T.dvector()
 
 def layer(x, w):
 	b = np.array([1], dtype=theano.config.floatX)
@@ -32,10 +36,6 @@ def layer(x, w):
 
 def softmax_layer(x,w):
 	return T.nnet.softmax(layer(x,w)).reshape((2,))
-
-def grad_desc(cost, theta):
-	global alpha #learning rate
-	return theta - (alpha * T.grad(cost, wrt=theta))
 
 def flip(a):
 	if a==0:
@@ -66,27 +66,24 @@ w2 = theano.shared(np.array(np.random.rand(wid_hidden+1,dim_action), dtype=thean
 hidden_layer = layer(state, w1)
 output_layer = softmax_layer(hidden_layer, w2)
 
-#cost equation
-fc = output_layer*ret #does this seem correct?
-#fc = action_probabilities*ret
-#mse_fc = -T.sum(T.dot(fc.T,fc))
-#mse_fc = -T.sum(fc)
 
-# todo: include l1 and l2 norm regularization terms here
-mse_fc = T.sum(T.square(output_layer-ret))
+L1 = abs(w1).sum() + abs(w2).sum() #L1 norm regularization term
+L2 = (w1**2).sum() + (w2**2).sum() #L2 norm regularization term
+#cost equation
+mse_fc = T.sum(T.square(output_layer-ret_vector))#+ L1_reg*L1 + L2_reg*L2
+updates = Adam(mse_fc, [w1,w2])
 
 #compile theano functions
-#updates = [(w1,adam(mse_fc, [w1])[0]),(w2,adam(mse_fc, [w2])[0])]
-updates=[(w1, grad_desc(mse_fc, w1)), (w2, grad_desc(mse_fc, w2))]
-backprop = theano.function(inputs=[state,ret], outputs=mse_fc, updates=updates)
+backprop = theano.function(inputs=[state,ret_vector], outputs=mse_fc, updates=updates)
 run_forward = theano.function(inputs=[state], outputs=output_layer)
 
 max_steps = 0
-avg_steps = 0
+avg_steps = 0.0
 for train_iter in range(training_steps):
 	state = env.reset()
 	rewards = []
 	states = []
+	action_vectors = []
 
 	#an episode is one complete run of cart-pole 
 	#epoch = each step in an episode where we take one action
@@ -101,6 +98,9 @@ for train_iter in range(training_steps):
 		#get recommended action from forward pass of neural network
 		action_probabilities = run_forward(state)
 		action = e_greedy(action_probabilities)
+		action_vector = [0]*dim_action
+		action_vector[action] = 1
+		action_vectors.append(action_vector)
 		#take the action
 		state, reward, done, info = env.step(action)
 		rewards.append(reward)
@@ -111,7 +111,7 @@ for train_iter in range(training_steps):
 	if step>max_steps:
 		max_steps = step
 	print('Iter: '+str(train_iter)+' Steps: '+str(step)+' Max: '+str(max_steps)+ ' Avg: '+str(avg_steps))
-
+	#pprint(rewards)
  	# calculate discounted return for each step
 	for i in range(len(states)):  
 		ret = 0
@@ -122,7 +122,8 @@ for train_iter in range(training_steps):
 			decrease *= discount
 
 		#backprop this discounted return
-		backprop(states[i],ret)
+		backprop(states[i],np.dot(ret, action_vectors[i]))
+		#print(ret)
 		"""
 		backprop currently done epoch by epoch
 		hacky, and not optimized for speed
@@ -130,22 +131,23 @@ for train_iter in range(training_steps):
 		"""
 
 # test learnt policy, e-greedy is off
+print('********\nTesting\n********')
 max_steps = 0
-avg_steps = 0
-for test_iter in range(500):
+avg_steps = 0.0
+for test_iter in range(20):
 	state = env.reset()
 	done = False
 	import time
-	steps = 0
+	step = 0
 	while not done:
-		steps +=1 
+		step +=1 
 		if test_iter == 199:
 			time.sleep(0.001)
 			env.render()
 		action_probabilities = run_forward(state)
-		action = e_greedy(action_probabilities)
+		action = e_greedy(action_probabilities, off=True)
 		state, reward, done, info = env.step(action)
-		avg_steps = (avg_steps*test_iter + step)/(test_iter+1)
-		if step>max_steps:
-			max_steps = step
-print('Max: '+str(max_steps)+ ' Avg: '+str(avg_steps))
+	avg_steps = (avg_steps*test_iter + step)/(test_iter+1.0)
+	if step>max_steps:
+		max_steps = step
+	print('Steps: '+str(step)+ ' Max: '+str(max_steps)+ ' Avg: '+str(avg_steps))
