@@ -8,12 +8,13 @@ from pprint import pprint
 env = gym.make('CartPole-v0')
 env.reset()
 
-training_batch_size = 5
-num_batches = 1000
-e = 0.3# epsilon greedy action selection probability
-e_discount = 1#0.99
+training_batch_size = 8
+num_batches = 60
+e = 0.1# epsilon greedy action selection probability
+e_discount = 0.98
 discount = 1 #discount factor while calculating returns
 display = False # whether to render graphic
+monitor = False #whether to monitor the run and save video
 #state is defined by cart position, cart velocity, pole angle, pole tip velocity
 dim_state = 4 #dimension of state vector
 # there are two possible actions: move cart left(0) or move cart right (1)
@@ -72,13 +73,14 @@ output_layer = softmax_layer(hidden_layer, w2)
 L1 = abs(w1).sum() + abs(w2).sum() #L1 norm regularization term
 L2 = (w1**2).sum() + (w2**2).sum() #L2 norm regularization term
 #cost equation
-mse_fc = T.sum(-T.log(output_layer+ret_vector))#+ L1_reg*L1 + L2_reg*L2
+mse_fc = T.sum(T.log(T.dot(output_layer,-ret_vector)))#+ L1_reg*L1 + L2_reg*L2
 updates = Adam(mse_fc, [w1,w2])
 
 #compile theano functions
 backprop = theano.function(inputs=[state,ret_vector], outputs=mse_fc, updates=updates)
 run_forward = theano.function(inputs=[state], outputs=output_layer)
-
+if monitor:
+	env.monitor.start('/tmp/cartpole-monitor2', force=True)
 for batch_num in range(num_batches):
 	e *= e_discount
 	max_steps = 0
@@ -142,14 +144,15 @@ for batch_num in range(num_batches):
 
 # test learnt policy, e-greedy is off
 print('********\nTesting\n********')
+
 max_steps = 0
 avg_steps = 0.0
-for test_iter in range(20):
+for test_iter in range(100):		
 	state = env.reset()
 	done = False
 	import time
 	step = 0
-	while not done:
+	while not done and step<200:
 		step +=1 
 		if test_iter == 199:
 			time.sleep(0.001)
@@ -161,3 +164,5 @@ for test_iter in range(20):
 	if step>max_steps:
 		max_steps = step
 	print('Steps: '+str(step)+ ' Max: '+str(max_steps)+ ' Avg: '+str(avg_steps))
+if monitor:
+	env.monitor.close()
